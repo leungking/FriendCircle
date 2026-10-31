@@ -573,9 +573,10 @@ button {
     white-space: nowrap;
 }
 
+/* 点赞红心：已赞按钮与点赞列表的心均为红色 */
 .like-btn.liked svg {
-    fill: var(--protext);
-    stroke: var(--protext);
+    fill: #ff2d55;
+    stroke: #ff2d55;
 }
 
 /* 两个点按钮（点击展开/收起赞、评论按钮） */
@@ -628,7 +629,7 @@ button {
 .fc-likes-icon>svg {
     width: 18px;
     height: 18px;
-    color: var(--thetitle);
+    color: #ff2d55;
 }
 
 .fc-likes-list {
