@@ -443,8 +443,9 @@ button {
 }
 
 /* ============ 九宫格图片 ============ */
+/* 九宫格与正文同宽（主页与文章页通用） */
 .fc-gallery {
-    width: 85%;
+    width: 100%;
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 5px;
