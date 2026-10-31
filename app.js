@@ -509,6 +509,10 @@
             btn.classList.toggle('liked', !liked);
             fcSyncLikeText(btn);
 
+            // 点赞/取消成功后直接收起赞、评论胶囊，不用再点一次「..」
+            var capsule = item.querySelector('.fc-action-capsule');
+            if (capsule) capsule.classList.remove('is-open');
+
             var block = item.querySelector('.fc-likes');
             var count = item.querySelector('.like-count');
             if (block && count) {
