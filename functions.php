@@ -834,7 +834,7 @@ function fcMomentHtml($archive, $detail = false)
 
             <?php if ('' !== $location): ?>
                 <div class="fc-location">
-                    <a><?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?></a>
+                    <a href="https://maps.apple.com/?q=<?php echo urlencode($location); ?>" target="_blank" rel="noopener">📍<?php echo htmlspecialchars($location, ENT_QUOTES, 'UTF-8'); ?></a>
                 </div>
             <?php endif; ?>
 
