@@ -766,6 +766,9 @@
         } else {
             fcCloseReply(container);
         }
+        // 点评论按钮后直接收起胶囊（打开/关闭评论框都收起）
+        var capsule = card && card.querySelector('.fc-action-capsule');
+        if (capsule) capsule.classList.remove('is-open');
         fcSyncZanp(card);
         fcScrollToZanp(card);
     });
@@ -910,6 +913,10 @@
                 fcInlineMsg(form, data.error, true);
                 return;
             }
+            // 评论提交成功后直接收起胶囊（包括等待审核的情况）
+            var submitCard = form.closest('.fc-card');
+            var submitCapsule = submitCard && submitCard.querySelector('.fc-action-capsule');
+            if (submitCapsule) submitCapsule.classList.remove('is-open');
             fcSaveCommenter(form);
             text.value = '';
             fcSetFormAvatar(form, data.avatar);
