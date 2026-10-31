@@ -340,9 +340,11 @@ function fcMailAvatar($mail, $options)
 }
 
 /**
- * 随机头像池：assets/img/avatars/avatar-01.jpg ~ avatar-08.jpg，
+ * 随机头像池：assets/img/avatars/avatar-01.jpg ~ avatar-35.jpg，
  * 中国城市风景人文照片（Wikimedia Commons，来源见该目录 README.md），
- * 每刷一次随机换一张；真随机，连续两次抽到同一张的概率为 1/8，属正常随机。
+ * 池中 34 张对应 34 个省级行政区的省会/首府/直辖市/特别行政区，
+ * 另 1 张为苏州（非省会，作补充），共 35 张；
+ * 每刷一次随机换一张；真随机，连续两次抽到同一张的概率为 1/35，属正常随机。
  *
  * @param mixed $options
  * @return string
@@ -350,8 +352,8 @@ function fcMailAvatar($mail, $options)
 function fcRandomAvatar($options)
 {
     $pool = array();
-    for ($i = 1; $i <= 8; $i++) {
-        $pool[] = $options->themeUrl . '/assets/img/avatars/avatar-0' . $i . '.jpg';
+    for ($i = 1; $i <= 35; $i++) {
+        $pool[] = $options->themeUrl . '/assets/img/avatars/' . sprintf('avatar-%02d.jpg', $i);
     }
     return $pool[random_int(0, count($pool) - 1)];
 }
@@ -782,7 +784,13 @@ function fcMomentHtml($archive, $detail = false)
     // 必须用 Helper::options() 获取共享配置
     $options = Helper::options();
     $author = htmlspecialchars($archive->author->screenName ?: $archive->author->name, ENT_QUOTES, 'UTF-8');
-    $avatar = fcMailAvatar($archive->author->mail, $options);
+    // 文章卡片头像与顶部头像同规则：未自定义头像（空值或主题默认 avatar.svg）
+    // 时从随机头像池每卡独立抽一张（同页各文章头像互不相同、每刷都变），
+    // 已自定义头像时仍用作者邮箱头像（保持多作者区分）；评论者头像不受影响。
+    $fcAvatarSetting = trim((string) ($options->fcAvatarImage ?? ''));
+    $avatar = ('' === $fcAvatarSetting || 'assets/img/avatar.svg' === $fcAvatarSetting)
+        ? fcRandomAvatar($options)
+        : fcMailAvatar($archive->author->mail, $options);
     // 作者归档页链接（点击头像/昵称查看该作者全部文章）
     $authorUrl = htmlspecialchars($archive->author->permalink, ENT_QUOTES, 'UTF-8');
     // 播放器块（VideoCollector/APlayer）先从正文剔除，再独立输出到正文后，
