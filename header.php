@@ -136,14 +136,21 @@
             <?php
             $fcNick = htmlspecialchars(fcOption($this->options, 'fcNickname', $this->options->title), ENT_QUOTES, 'UTF-8');
             $fcAvatar = htmlspecialchars(fcHeaderAvatar($this->options), ENT_QUOTES, 'UTF-8');
+            // 随机头像模式：主题头像未自定义（空值或默认 avatar.svg）时，
+            // 顶部头像（包括登录后 JS 替换的那张）都应随机，不能被固定邮箱头像盖掉。
+            $fcAvatarSetting = trim((string) ($this->options->fcAvatarImage ?? ''));
+            $fcAvatarRandom = ('' === $fcAvatarSetting || 'assets/img/avatar.svg' === $fcAvatarSetting) ? '1' : '0';
             list($fcAvPre, $fcAvSuf) = fcAvatarBase($this->options);
             $fcRowAttrs = ' data-default-name="' . $fcNick . '" data-default-avatar="' . $fcAvatar . '"'
+                . ' data-avatar-random="' . $fcAvatarRandom . '"'
                 . ' data-avatar-pre="' . htmlspecialchars($fcAvPre, ENT_QUOTES, 'UTF-8') . '"'
                 . ' data-avatar-suf="' . htmlspecialchars($fcAvSuf, ENT_QUOTES, 'UTF-8') . '"';
             if ($this->user->hasLogin()) {
+                // 随机模式下登录头像也用同一张随机图，避免 JS 把随机头像换回固定邮箱头像。
+                $fcLoginAvatar = '1' === $fcAvatarRandom ? $fcAvatar : htmlspecialchars(fcMailAvatar($this->user->mail, $this->options), ENT_QUOTES, 'UTF-8');
                 $fcRowAttrs .= ' data-login-name="' . htmlspecialchars($this->user->screenName, ENT_QUOTES, 'UTF-8') . '"'
                     . ' data-login-mail="' . htmlspecialchars((string) $this->user->mail, ENT_QUOTES, 'UTF-8') . '"'
-                    . ' data-login-avatar="' . htmlspecialchars(fcMailAvatar($this->user->mail, $this->options), ENT_QUOTES, 'UTF-8') . '"';
+                    . ' data-login-avatar="' . $fcLoginAvatar . '"';
             }
             ?>
             <div class="fc-profile-row"<?php echo $fcRowAttrs; ?>>
