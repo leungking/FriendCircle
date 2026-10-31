@@ -901,9 +901,10 @@ function fcMomentHtml($archive, $detail = false)
  * 记录访问并缓存统计数据（挂载于 Widget\Archive:header 钩子，仅 HTML 页面触发）
  *
  * 数据以 SQL 写入站点数据库：
- *   {prefix}counter_visits —— 访客明细（站点+日期+访客指纹 唯一去重，仅保留 90 天）
+ *   {prefix}counter_daily  —— 每日页面访问累计（站点+日期 1 行，1 次页面加载计 1 次）
  *   {prefix}counter_stats  —— 各站点总访问累计
- * 同一访客（IP+UA 指纹）同一天只计一次；常见爬虫 UA 不计入。
+ *   {prefix}counter_visits —— 旧版访客明细，不再写入，仅定期清理 90 天前旧数据
+ * 按页面访问计数：同一访客同一天多次访问多次计数；常见爬虫 UA 不计入；不再保存 IP/UA 指纹。
  * 统计结果存入 $GLOBALS 供 renderCounterBar() 渲染，失败时静默跳过不影响页面。
  *
  * @return void
@@ -975,51 +976,48 @@ function counterDoVisit()
     $today = counterBeijingDate();
     $yesterday = counterBeijingDate(-1);
 
-    // 访客指纹：客户端 IP（取第一个合法 XFF）+ UA + 站点标识
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
-    if (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $candidate = trim(explode(',', $_SERVER['HTTP_X_FORWARDED_FOR'])[0]);
-        if (filter_var($candidate, FILTER_VALIDATE_IP)) {
-            $ip = $candidate;
-        }
-    }
+    // 按页面访问计数：不再做访客指纹去重，不再保存 IP/UA；仅排除常见爬虫 UA
     $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
     if (preg_match('/bot|spider|crawler|slurp|curl|wget|python|headless|phantom/i', $ua)) {
         return;
     }
-    $visitorHash = substr(hash('sha256', $ip . '|' . $ua . '|' . $site), 0, 16);
 
     $visitsTable = '`' . $db->getPrefix() . 'counter_visits`';
+    $dailyTable = '`' . $db->getPrefix() . 'counter_daily`';
     $statsTable = '`' . $db->getPrefix() . 'counter_stats`';
     $now = time();
 
-    // 唯一键去重：同访客同日仅插入一次；rowCount>0 表示今天首次来访
-    // MySQL 用 INSERT IGNORE，SQLite 用 INSERT OR IGNORE
-    $ignoreSyntax = stripos($db->getAdapterName(), 'sqlite') !== false ? 'INSERT OR IGNORE INTO' : 'INSERT IGNORE INTO';
-    $inserted = $db->query(
-        "{$ignoreSyntax} {$visitsTable} (`site`, `date`, `visitor_hash`, `created_at`)
-         VALUES ('{$site}', '{$today}', '{$visitorHash}', {$now})",
+    // 每日页面访问 +1：先写当日行（当日行不存在时插入初始 1 次），再写总数；
+    // 当日表尚未创建时这里抛错，由 recordCounterVisit 建表（含历史回填）后重试一次，
+    // 本次访问只在重试时计 1 次，不会因先写总数而重复计数
+    $dailyUpdated = $db->query(
+        "UPDATE {$dailyTable} SET `views` = `views` + 1, `updated_at` = {$now} WHERE `site` = '{$site}' AND `date` = '{$today}'",
         \Typecho\Db::WRITE,
         \Typecho\Db::UPDATE
     );
-
-    if ($inserted > 0) {
-        // 累计总数；UPDATE 影响 0 行说明站点首次来访，插入初始行
-        $updated = $db->query(
-            "UPDATE {$statsTable} SET `total` = `total` + 1, `updated_at` = {$now} WHERE `site` = '{$site}'",
+    if (0 == $dailyUpdated) {
+        $db->query(
+            "INSERT INTO {$dailyTable} (`site`, `date`, `views`, `updated_at`) VALUES ('{$site}', '{$today}', 1, {$now})",
             \Typecho\Db::WRITE,
-            \Typecho\Db::UPDATE
+            \Typecho\Db::INSERT
         );
-        if (0 == $updated) {
-            $db->query(
-                "INSERT INTO {$statsTable} (`site`, `total`, `updated_at`) VALUES ('{$site}', 1, {$now})",
-                \Typecho\Db::WRITE,
-                \Typecho\Db::INSERT
-            );
-        }
     }
 
-    // 约 10% 概率清理 90 天前明细
+    // 累计总数，每次访问都 +1；UPDATE 影响 0 行说明站点首次来访，插入初始行
+    $updated = $db->query(
+        "UPDATE {$statsTable} SET `total` = `total` + 1, `updated_at` = {$now} WHERE `site` = '{$site}'",
+        \Typecho\Db::WRITE,
+        \Typecho\Db::UPDATE
+    );
+    if (0 == $updated) {
+        $db->query(
+            "INSERT INTO {$statsTable} (`site`, `total`, `updated_at`) VALUES ('{$site}', 1, {$now})",
+            \Typecho\Db::WRITE,
+            \Typecho\Db::INSERT
+        );
+    }
+
+    // 约 10% 概率清理旧版访客明细 90 天前的数据（新版不再写入该表，旧数据会自然清掉）
     if (mt_rand(1, 100) <= 10) {
         $cutoff = counterBeijingDate(-90);
         $db->query(
@@ -1034,7 +1032,7 @@ function counterDoVisit()
 }
 
 /**
- * 查询当前统计数据（今日/昨日/近7天/近30天明细计数 + 累计总数）
+ * 查询当前统计数据（今日/昨日/近7天/近30天页面访问计数 + 累计总数）
  *
  * 近 N 天按自然日计，含今天（如近7天 = 今天往前共 7 个自然日）。
  *
@@ -1049,13 +1047,13 @@ function counterQueryStats($db, $site)
     $weekStart = counterBeijingDate(-6);
     $monthStart = counterBeijingDate(-29);
 
-    // 一次范围扫描同时算出 4 项明细计数（Y-m-d 字符串比较即日期比较）
+    // 一次范围扫描同时算出 4 项页面访问计数（Y-m-d 字符串比较即日期比较）
     $row = $db->fetchRow(
-        "SELECT COUNT(CASE WHEN `date` = '{$today}' THEN 1 END) AS `today_cnt`,
-                COUNT(CASE WHEN `date` = '{$yesterday}' THEN 1 END) AS `yesterday_cnt`,
-                COUNT(CASE WHEN `date` >= '{$weekStart}' THEN 1 END) AS `week_cnt`,
-                COUNT(CASE WHEN `date` >= '{$monthStart}' THEN 1 END) AS `month_cnt`
-         FROM `{$db->getPrefix()}counter_visits` WHERE `site` = '{$site}' AND `date` >= '{$monthStart}'"
+        "SELECT COALESCE(SUM(CASE WHEN `date` = '{$today}' THEN `views` END), 0) AS `today_cnt`,
+                COALESCE(SUM(CASE WHEN `date` = '{$yesterday}' THEN `views` END), 0) AS `yesterday_cnt`,
+                COALESCE(SUM(CASE WHEN `date` >= '{$weekStart}' THEN `views` END), 0) AS `week_cnt`,
+                COALESCE(SUM(CASE WHEN `date` >= '{$monthStart}' THEN `views` END), 0) AS `month_cnt`
+         FROM `{$db->getPrefix()}counter_daily` WHERE `site` = '{$site}' AND `date` >= '{$monthStart}'"
     );
     $totalRow = $db->fetchRow(
         "SELECT `total` FROM `{$db->getPrefix()}counter_stats` WHERE `site` = '{$site}'"
@@ -1120,6 +1118,18 @@ function counterCreateTables()
             `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
             PRIMARY KEY (`site`)
         )");
+
+        $db->query("CREATE TABLE IF NOT EXISTS `{$prefix}counter_daily` (
+            `site` VARCHAR(64) NOT NULL DEFAULT '',
+            `date` VARCHAR(10) NOT NULL DEFAULT '',
+            `views` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+            `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
+            PRIMARY KEY (`site`, `date`)
+        )");
+
+        // 历史回填：旧版按访客去重的日计数作为每日基数（已存在当日行时忽略，不覆盖已计的页面访问数）
+        $db->query("INSERT OR IGNORE INTO `{$prefix}counter_daily` (`site`, `date`, `views`, `updated_at`)
+            SELECT `site`, `date`, COUNT(*), MAX(`created_at`) FROM `{$prefix}counter_visits` GROUP BY `site`, `date`");
         return;
     }
 
@@ -1139,6 +1149,18 @@ function counterCreateTables()
         `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
         PRIMARY KEY (`site`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    $db->query("CREATE TABLE IF NOT EXISTS `{$prefix}counter_daily` (
+        `site` VARCHAR(64) NOT NULL DEFAULT '',
+        `date` VARCHAR(10) NOT NULL DEFAULT '',
+        `views` BIGINT UNSIGNED NOT NULL DEFAULT 0,
+        `updated_at` INT UNSIGNED NOT NULL DEFAULT 0,
+        PRIMARY KEY (`site`, `date`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
+    // 历史回填：旧版按访客去重的日计数作为每日基数（已存在当日行时忽略，不覆盖已计的页面访问数）
+    $db->query("INSERT IGNORE INTO `{$prefix}counter_daily` (`site`, `date`, `views`, `updated_at`)
+        SELECT `site`, `date`, COUNT(*), MAX(`created_at`) FROM `{$prefix}counter_visits` GROUP BY `site`, `date`");
 }
 
 /**
