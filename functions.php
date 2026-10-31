@@ -340,7 +340,25 @@ function fcMailAvatar($mail, $options)
 }
 
 /**
- * 解析主题头像配置：邮箱走头像源，其余按地址处理，空值回落主题默认头像
+ * 随机头像池：assets/img/avatars/avatar-01.jpg ~ avatar-08.jpg，
+ * 中国城市风景人文照片（Wikimedia Commons，来源见该目录 README.md），
+ * 每刷一次随机换一张；真随机，连续两次抽到同一张的概率为 1/8，属正常随机。
+ *
+ * @param mixed $options
+ * @return string
+ */
+function fcRandomAvatar($options)
+{
+    $pool = array();
+    for ($i = 1; $i <= 8; $i++) {
+        $pool[] = $options->themeUrl . '/assets/img/avatars/avatar-0' . $i . '.jpg';
+    }
+    return $pool[random_int(0, count($pool) - 1)];
+}
+
+/**
+ * 解析主题头像配置：邮箱走头像源，其余按地址处理，
+ * 未自定义头像（空值或主题默认 avatar.svg）时用随机头像池
  *
  * @param mixed $options
  * @return string
@@ -348,8 +366,8 @@ function fcMailAvatar($mail, $options)
 function fcHeaderAvatar($options)
 {
     $value = trim((string) ($options->fcAvatarImage ?? ''));
-    if ('' === $value) {
-        return $options->themeUrl . '/assets/img/avatar.svg';
+    if ('' === $value || 'assets/img/avatar.svg' === $value) {
+        return fcRandomAvatar($options);
     }
     if (filter_var($value, FILTER_VALIDATE_EMAIL)) {
         return fcMailAvatar($value, $options);
