@@ -1837,6 +1837,11 @@
                 }
             }
         }
+        /* 随机头像模式：顶部头像必须随机，不能被登录邮箱头像或评论者邮箱头像盖回固定图。
+           名字仍保留登录/评论者名字，只把头像强制回默认随机图（服务端每刷已抽过一张）。 */
+        if ('1' === row.dataset.avatarRandom) {
+            avatar = row.dataset.defaultAvatar || avatar;
+        }
         if (!name && !avatar) return;
         if (name) {
             var h4 = row.querySelector('h4');
