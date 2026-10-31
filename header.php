@@ -156,3 +156,15 @@
                 <div class="fc-signature"><p><?php echo htmlspecialchars($signature, ENT_QUOTES, 'UTF-8'); ?></p></div>
             <?php endif; ?>
         </div>
+
+<style>
+.fc-citynav,.fc-citynav-list{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;align-items:center}
+.fc-citynav{padding:12px 16px 4px}
+.fc-citynav a{display:inline-block;padding:6px 12px;border-radius:999px;background:rgba(0,0,0,.06);color:inherit;text-decoration:none;font-size:14px}
+.fc-citynav a:hover{background:rgba(0,0,0,.12)}
+</style>
+<nav class="fc-citynav" aria-label="页面与分类导航">
+<?php \Widget\Contents\Page\Rows::alloc()->listPages('wrapTag=span&wrapClass=fc-citynav-list&itemTag=span&itemClass=fc-citynav-item'); ?>
+<a href="<?php $this->options->siteUrl(); ?>">全部动态</a>
+<?php \Widget\Metas\Category\Rows::alloc()->listCategories('wrapTag=span&wrapClass=fc-citynav-list&itemTag=span&itemClass=fc-citynav-item'); ?>
+</nav>
